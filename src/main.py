@@ -91,11 +91,20 @@ def start(bot):
         else:
             emoji = "🌙"
         message += f"{fairy.name} {emoji}\n"
+
+    message = appendOpenTime(message)
     bot.send_message(text=message)
 
     # Write today to records
     with open('record.json', 'w') as f:
         json.dump({"date": date}, f)
+
+def appendOpenTime(msg):
+    if time.strftime("%w") in ['0', '6']:
+        msg += "\n\n☀️：12:00 ~ 17:00\n🌍：12:00 ~ 22:00:\n🌙：17:00 ~ 22:00\n"
+    else:
+        msg += "\n\n☀️：14:00 ~ 18:00\n🌍：14:00 ~ 22:00:\n🌙：18:00 ~ 22:00\n"
+    return msg
 
 def checkNeedStart():
     if not os.path.exists('record.json'):
