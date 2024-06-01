@@ -102,7 +102,7 @@ def checkNeedStart():
         return True
     with open('record.json') as f:
         record = json.load(f)
-        if record['date'] != time.strftime("%Y%m%d"):
+        if int(record['date']) < int(time.strftime("%Y%m%d")):
             return True
     return False
 
