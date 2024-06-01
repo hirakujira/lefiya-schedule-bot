@@ -93,6 +93,7 @@ def start(bot):
         message += f"{fairy.name} {emoji}\n"
 
     message = appendOpenTime(message)
+    message += "\n實際班表以 https://shop.ichefpos.com/store/WqxdHUPa/ordering 為準。"
     bot.send_message(text=message)
 
     # Write today to records
@@ -101,9 +102,9 @@ def start(bot):
 
 def appendOpenTime(msg):
     if time.strftime("%w") in ['0', '6']:
-        msg += "\n\n今日營運時間：\n☀️：12:00 ~ 17:00\n🌍：12:00 ~ 22:00\n🌙：17:00 ~ 22:00\n"
+        msg += "\n今日營運時間：\n☀️：12:00 ~ 17:00\n🌍：12:00 ~ 22:00\n🌙：17:00 ~ 22:00\n"
     else:
-        msg += "\n\n今日營運時間：\n☀️：14:00 ~ 18:00\n🌍：14:00 ~ 22:00\n🌙：18:00 ~ 22:00\n"
+        msg += "\n今日營運時間：\n☀️：14:00 ~ 18:00\n🌍：14:00 ~ 22:00\n🌙：18:00 ~ 22:00\n"
     return msg
 
 def checkNeedStart():
