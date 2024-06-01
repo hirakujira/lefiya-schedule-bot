@@ -106,15 +106,24 @@ def checkNeedStart():
             return True
     return False
 
+def checkInTime():
+    hour = int(time.strftime("%H"))
+    minute = int(time.strftime("%M"))
+    if time.strftime("%w") in ['0', '6']:
+        if (hour == 11 and minute > 40) or (hour == 12 and minute < 20):
+            return True
+    else:
+        if (hour == 13 and minute > 40) or (hour == 14 and minute < 20):
+            return True
+    print(f"Not in time: {hour}:{minute}")
+    return False
+
 def main():
     botConfig = load_config()
     bot = TelegramBot(botConfig.token, botConfig.channel_id)
     while True:
-        hour = time.strftime("%H")
-        minute = time.strftime("%M")
-        if checkNeedStart() and int(hour) == 14 and int(minute) < 20:
+        if checkNeedStart() and checkInTime():
             start(bot)
-        print(f"Sleeping... {hour}:{minute}")
         time.sleep(60)
 
 if __name__ == '__main__':
