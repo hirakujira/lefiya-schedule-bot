@@ -81,6 +81,11 @@ def start(bot):
     items = fetch_items()
     fairies = parse_items(items)
     global date
+
+    # 網站尚未更新
+    if int(date) < int(time.strftime("%Y%m%d")):
+        return
+    
     message = f"{date} 出勤的小精靈有：\n\n"
     for fairy in fairies:
         emoji = ""
