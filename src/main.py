@@ -125,10 +125,10 @@ def checkInTime():
     hour = int(time.strftime("%H"))
     minute = int(time.strftime("%M"))
     if time.strftime("%w") in ['0', '6']:
-        if (hour == 11 and minute > 40) or (hour == 12 and minute < 20):
+        if (hour == 11 and minute > 40) or (hour == 12 and minute < 59):
             return True
     else:
-        if (hour == 13 and minute > 40) or (hour == 14 and minute < 20):
+        if (hour == 13 and minute > 40) or (hour == 14 and minute < 59):
             return True
     print(f"Not in time: {hour}:{minute}")
     return False
