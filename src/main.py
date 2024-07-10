@@ -12,8 +12,9 @@ class TelegramBot:
             token=token
         )
         self.chat_id = chat_id
+
     def send_message(self, text: str) -> bool:
-        payload = {'chat_id': self.chat_id, 'text': text}
+        payload = {'chat_id': self.chat_id, 'text': text, 'link_preview_options': {'is_disabled': True}}
         r = requests.post(self.url+'sendMessage', json=payload)
         if r.status_code == 200:
             return True
@@ -98,7 +99,7 @@ def start(bot):
         message += f"{fairy.name} {emoji}\n"
 
     message = appendOpenTime(message)
-    message += "\n實際班表以 https://shop.ichefpos.com/store/WqxdHUPa/ordering 為準。"
+    message += "實際班表以現場為準\n\n線上點拍連結：\nhttps://order.lefiya.com"
     bot.send_message(text=message)
 
     # Write today to records
