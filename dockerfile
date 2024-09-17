@@ -8,4 +8,4 @@ FROM base
 COPY --from=builder /root/.local /root/.local
 COPY src /app
 WORKDIR /app
-CMD ["python", "main.py"]
+CMD ["python", "-u", "main.py"]

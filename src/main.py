@@ -4,6 +4,7 @@ import requests
 import json
 import time
 import os
+import sys
 from enum import Enum
 
 class TelegramBot:
@@ -135,6 +136,12 @@ def checkInTime():
     return False
 
 def main():
+    if len(sys.argv) == 2 and sys.argv[1] == 'force':
+        botConfig = load_config()
+        bot = TelegramBot(botConfig.token, botConfig.channel_id)
+        start(bot)
+        return
+
     botConfig = load_config()
     bot = TelegramBot(botConfig.token, botConfig.channel_id)
     while True:
