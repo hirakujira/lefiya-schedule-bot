@@ -1,171 +1,257 @@
 #!/usr/bin/python3
 
-import requests
 import json
-import time
-import os
 import sys
+import time
+from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
+from pathlib import Path
+from typing import List, Dict, Any
 
-class TelegramBot:
-    def __init__(self, token, chat_id):
-        self.url = 'https://api.telegram.org/bot{token}/'.format(
-            token=token
-        )
-        self.chat_id = chat_id
+import requests
 
-    def send_message(self, text: str) -> bool:
-        payload = {'chat_id': self.chat_id, 'text': text, 'link_preview_options': {'is_disabled': True}}
-        r = requests.post(self.url+'sendMessage', json=payload)
-        if r.status_code == 200:
-            return True
-
-
-class BotConfig:
-    def __init__(self, token, channel_id):
-        self.token = token
-        self.channel_id = channel_id
 
 class Schedule(Enum):
-    UNKNOWN=0
-    DAY=1
-    ALL=2
-    NIGHT=3
+    DAY = ("午安", "☀️", 1)
+    ALL = ("午晚安", "🌍", 2)
+    NIGHT = ("晚安", "🌙", 3)
 
+    def __init__(self, keyword: str, emoji: str, order: int):
+        self.keyword = keyword
+        self.emoji = emoji
+        self.order = order
+
+    @classmethod
+    def from_name(cls, name: str) -> "Schedule":
+        for schedule in cls:
+            if schedule.keyword in name:
+                return schedule
+        return cls.NIGHT
+
+
+@dataclass
 class Fairy:
-    def __init__(self, name, schedule):
-        self.name = name
-        self.schedule = schedule
+    name: str
+    schedule: Schedule
 
-date = None
 
-def load_config():
-    with open('config.json') as f:
-        j = json.load(f)
-        return BotConfig(j['token'], j['channel_id'])
+@dataclass
+class BotConfig:
+    token: str
+    channel_id: str
 
-def fetch_items(uuids):
-    url = 'https://shop.ichefpos.com/api/graphql/online_restaurant?op=restaurantMenuItemCategoriesQuery'
-    response = requests.post(
-        url, 
-        headers={"Content-Type": "application/json", "cache-control": "no-cache"},
-        json={"operationName":"restaurantMenuItemCategoriesQuery","variables":{"publicId":"WqxdHUPa","categoriesSnapshotUuids":uuids},"query":"query restaurantMenuItemCategoriesQuery($publicId: String, $categoriesSnapshotUuids: [UUID!]!) {\n  restaurant(publicId: $publicId) {\n    menu {\n      categoriesSnapshot(uuids: $categoriesSnapshotUuids) {\n        uuid\n        _id: uuid\n        name\n        description\n        menuItemSnapshot {\n          ...restaurantMenuItemBasicFields\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment restaurantMenuItemBasicFields on OnlineRestaurantMenuItemSnapshotOutput {\n  _id: uuid\n  uuid\n  ichefUuid\n  name\n  price\n  pictureFilename\n  menuItemType\n  description\n  isSoldOut\n  __typename\n}\n"})
-    return response.json()
+    @classmethod
+    def from_file(cls, path: str = "config.json") -> "BotConfig":
+        with open(path) as f:
+            data = json.load(f)
+            return cls(data["token"], data["channel_id"])
 
-def fetch_menu_hours():
-    url = 'https://shop.ichefpos.com/api/graphql/online_restaurant?op=menuHoursSnapshotQuery'
-    response = requests.post(url, 
-        headers={"Content-Type": "application/json", "cache-control": "no-cache"}, 
-        json={
-            "operationName": "menuHoursSnapshotQuery",
-            "variables": {
-                "publicId": "WqxdHUPa",
-                "platformType": "ICHEF"
-            },
-            "query": "query menuHoursSnapshotQuery($publicId: String!, $platformType: PlatformTypes!) {\n  restaurant(publicId: $publicId) {\n    onlineOrderingMenu(platformType: $platformType) {\n      menuHoursSnapshot {\n        uuid\n        name\n        startTime\n        weekdays\n        startDate\n        endTime\n        endDate\n        categorySnapshotUuids\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}\n"
-        })
-    return response.json()
 
-def parse_hour_uuids(hours):
-    return hours['data']['restaurant']['onlineOrderingMenu']['menuHoursSnapshot'][0]['categorySnapshotUuids']
+class TelegramBot:
+    def __init__(self, config: BotConfig):
+        self.config = config
+        self.api_url = f"https://api.telegram.org/bot{config.token}/"
 
-def parse_items(items):
-    try:
-        global date
+    def send_message(self, text: str) -> bool:
+        payload = {
+            'chat_id': self.config.channel_id,
+            'text': text,
+            'link_preview_options': {'is_disabled': True}
+        }
+        try:
+            response = requests.post(f'{self.api_url}sendMessage', json=payload)
+            return response.status_code == 200
+        except Exception as e:
+            print(f"Error sending message: {e}")
+            return False
+
+
+class IChefAPI:
+    BASE_URL = "https://shop.ichefpos.com/api/graphql/online_restaurant"
+    PUBLIC_ID = "WqxdHUPa"
+
+    @staticmethod
+    def _make_request(
+        operation: str, query: str, variables: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        url = f"{IChefAPI.BASE_URL}?op={operation}"
+        headers = {"Content-Type": "application/json", "cache-control": "no-cache"}
+        payload = {"operationName": operation, "variables": variables, "query": query}
+
+        try:
+            response = requests.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            print(f"API request failed: {e}")
+            return {}
+
+    @classmethod
+    def fetch_menu_hours(cls) -> List[str]:
+        query = """query menuHoursSnapshotQuery($publicId: String!, $platformType: PlatformTypes!) {
+  restaurant(publicId: $publicId) {
+    onlineOrderingMenu(platformType: $platformType) {
+      menuHoursSnapshot {
+        categorySnapshotUuids
+      }
+    }
+  }
+}"""
+        variables = {"publicId": cls.PUBLIC_ID, "platformType": "ICHEF"}
+
+        result = cls._make_request("menuHoursSnapshotQuery", query, variables)
+        try:
+            snapshots = result["data"]["restaurant"]["onlineOrderingMenu"][
+                "menuHoursSnapshot"
+            ]
+            return snapshots[0]["categorySnapshotUuids"] if snapshots else []
+        except (KeyError, IndexError):
+            return []
+
+    @classmethod
+    def fetch_menu_items(cls, uuids: List[str]) -> Dict[str, Any]:
+        query = """query restaurantMenuItemCategoriesQuery($publicId: String, $categoriesSnapshotUuids: [UUID!]!) {
+  restaurant(publicId: $publicId) {
+    menu {
+      categoriesSnapshot(uuids: $categoriesSnapshotUuids) {
+        name
+        menuItemSnapshot {
+          name
+        }
+      }
+    }
+  }
+}"""
+        variables = {"publicId": cls.PUBLIC_ID, "categoriesSnapshotUuids": uuids}
+
+        return cls._make_request("restaurantMenuItemCategoriesQuery", query, variables)
+
+
+class ScheduleBot:
+    def __init__(self, config: BotConfig):
+        self.bot = TelegramBot(config)
+        self.api = IChefAPI()
+        self.record_file = Path("record.json")
+
+    def get_fairies(self) -> tuple[List[Fairy], str]:
+        uuids = self.api.fetch_menu_hours()
+        if not uuids:
+            return [], ""
+
+        items_data = self.api.fetch_menu_items(uuids)
+        return self._parse_fairies(items_data)
+
+    def _parse_fairies(self, data: Dict[str, Any]) -> tuple[List[Fairy], str]:
         fairies = []
-        for item in items['data']['restaurant']['menu']['categoriesSnapshot']:
-            schedule_name = item['name']
-            date = schedule_name[:8]
-            schedule = Schedule.UNKNOWN
-            if "午晚安" in schedule_name:
-                schedule = Schedule.ALL
-            elif "午安" in schedule_name:
-                schedule = Schedule.DAY
-            else:
-                schedule = Schedule.NIGHT
+        date = ""
 
-            for menuItem in item['menuItemSnapshot']:
-                fairy = Fairy(menuItem['name'], schedule)
-                fairies.append(fairy)
+        try:
+            categories = data["data"]["restaurant"]["menu"]["categoriesSnapshot"]
+            for category in categories:
+                name = category["name"]
+                if not date and len(name) >= 8:
+                    date = name[:8]
 
-            fairies.sort(key=lambda x: x.schedule.value)
-        return fairies
-                
-    except Exception as e:
-        print("Error parsing items")
-        print(e)
-    return []
+                schedule = Schedule.from_name(name)
+                for item in category.get("menuItemSnapshot", []):
+                    fairies.append(Fairy(item["name"], schedule))
 
-def start(bot):
-    hours = fetch_menu_hours()
-    items = fetch_items(parse_hour_uuids(hours))
-    fairies = parse_items(items)
-    global date
+            fairies.sort(key=lambda f: f.schedule.order)
+        except (KeyError, TypeError) as e:
+            print(f"Error parsing data: {e}")
 
-    # 網站尚未更新
-    if int(date) < int(time.strftime("%Y%m%d")):
-        return
-    
-    message = f"{date} 出勤的小精靈有：\n\n"
-    for fairy in fairies:
-        emoji = ""
-        if fairy.schedule == Schedule.DAY:
-            emoji = "☀️"
-        elif fairy.schedule == Schedule.ALL:
-            emoji = "🌍"
+        return fairies, date
+
+    def format_message(self, fairies: List[Fairy], date: str) -> str:
+        message = f"{date} 出勤的小精靈有：\n\n"
+
+        for fairy in fairies:
+            message += f"{fairy.name} {fairy.schedule.emoji}\n"
+
+        message += self._get_opening_hours()
+        message += "實際班表以現場為準\n\n線上點拍連結：\nhttps://order.lefiya.com"
+        return message
+
+    def _get_opening_hours(self) -> str:
+        is_weekend = datetime.now().weekday() >= 5
+        if is_weekend:
+            return "\n今日營運時間：\n☀️：12:00 ~ 17:00\n🌍：12:00 ~ 22:00\n🌙：17:00 ~ 22:00\n"
         else:
-            emoji = "🌙"
-        message += f"{fairy.name} {emoji}\n"
+            return "\n今日營運時間：\n☀️：14:00 ~ 18:00\n🌍：14:00 ~ 22:00\n🌙：18:00 ~ 22:00\n"
 
-    message = appendOpenTime(message)
-    message += "實際班表以現場為準\n\n線上點拍連結：\nhttps://order.lefiya.com"
-    bot.send_message(text=message)
+    def should_send(self) -> bool:
+        return self._is_new_day() and self._is_send_time()
 
-    # Write today to records
-    with open('record.json', 'w') as f:
-        json.dump({"date": date}, f)
-
-def appendOpenTime(msg):
-    if time.strftime("%w") in ['0', '6']:
-        msg += "\n今日營運時間：\n☀️：12:00 ~ 17:00\n🌍：12:00 ~ 22:00\n🌙：17:00 ~ 22:00\n"
-    else:
-        msg += "\n今日營運時間：\n☀️：14:00 ~ 18:00\n🌍：14:00 ~ 22:00\n🌙：18:00 ~ 22:00\n"
-    return msg
-
-def checkNeedStart():
-    if not os.path.exists('record.json'):
-        return True
-    with open('record.json') as f:
-        record = json.load(f)
-        if int(record['date']) < int(time.strftime("%Y%m%d")):
+    def _is_new_day(self) -> bool:
+        if not self.record_file.exists():
             return True
-    return False
 
-def checkInTime():
-    hour = int(time.strftime("%H"))
-    minute = int(time.strftime("%M"))
-    if time.strftime("%w") in ['0', '6']:
-        if (hour == 11 and minute > 40) or (hour == 12 and minute < 59):
+        try:
+            with open(self.record_file) as f:
+                record = json.load(f)
+                last_date = int(record.get("date", 0))
+                today = int(datetime.now().strftime("%Y%m%d"))
+                return last_date < today
+        except (json.JSONDecodeError, ValueError):
             return True
-    else:
-        if (hour == 13 and minute > 40) or (hour == 14 and minute < 59):
-            return True
-    print(f"Not in time: {hour}:{minute}")
-    return False
+
+    def _is_send_time(self) -> bool:
+        now = datetime.now()
+        hour, minute = now.hour, now.minute
+        is_weekend = now.weekday() >= 5
+
+        if is_weekend:
+            in_time = (hour == 11 and minute > 40) or (hour == 12 and minute < 59)
+        else:
+            in_time = (hour == 13 and minute > 40) or (hour == 14 and minute < 59)
+
+        if not in_time:
+            print(f"Not in send time: {hour:02d}:{minute:02d}")
+        return in_time
+
+    def update_record(self, date: str):
+        with open(self.record_file, "w") as f:
+            json.dump({"date": date}, f)
+
+    def run_once(self):
+        fairies, date = self.get_fairies()
+        if not fairies or not date:
+            print("No data available")
+            return
+
+        today = datetime.now().strftime("%Y%m%d")
+        if int(date) < int(today):
+            print(f"Data not updated yet: {date} < {today}")
+            return
+
+        message = self.format_message(fairies, date)
+        if self.bot.send_message(message):
+            self.update_record(date)
+
+    def run(self):
+        while True:
+            if self.should_send():
+                self.run_once()
+            time.sleep(60)
+
 
 def main():
-    if len(sys.argv) == 2 and sys.argv[1] == 'force':
-        botConfig = load_config()
-        bot = TelegramBot(botConfig.token, botConfig.channel_id)
-        start(bot)
-        return
+    try:
+        config = BotConfig.from_file()
+        bot = ScheduleBot(config)
 
-    botConfig = load_config()
-    bot = TelegramBot(botConfig.token, botConfig.channel_id)
-    while True:
-        if checkNeedStart() and checkInTime():
-            start(bot)
-        time.sleep(60)
+        if len(sys.argv) == 2 and sys.argv[1] == "force":
+            bot.run_once()
+        else:
+            bot.run()
+    except FileNotFoundError:
+        print("Error: config.json not found")
+    except KeyboardInterrupt:
+        print("\nStopped")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
