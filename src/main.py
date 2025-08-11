@@ -44,13 +44,30 @@ def load_config():
         j = json.load(f)
         return BotConfig(j['token'], j['channel_id'])
 
-def fetch_items():
+def fetch_items(uuids):
     url = 'https://shop.ichefpos.com/api/graphql/online_restaurant?op=restaurantMenuItemCategoriesQuery'
     response = requests.post(
         url, 
         headers={"Content-Type": "application/json", "cache-control": "no-cache"},
-        json={"operationName":"restaurantMenuItemCategoriesQuery","variables":{"publicId":"WqxdHUPa"},"query":"query restaurantMenuItemCategoriesQuery($publicId: String) {\n restaurant(publicId: $publicId) {\n menu {\n categoriesSnapshot {\n uuid\n _id: uuid\n name\n menuItemSnapshot {\n ...restaurantMenuItemBasicFields\n __typename\n }\n __typename\n }\n __typename\n }\n __typename\n }\n}\n\nfragment restaurantMenuItemBasicFields on OnlineRestaurantMenuItemSnapshotOutput {\n _id: uuid\n uuid\n ichefUuid\n name\n price\n pictureFilename\n menuItemType\n description\n isSoldOut\n __typename\n}\n"})
+        json={"operationName":"restaurantMenuItemCategoriesQuery","variables":{"publicId":"WqxdHUPa","categoriesSnapshotUuids":uuids},"query":"query restaurantMenuItemCategoriesQuery($publicId: String, $categoriesSnapshotUuids: [UUID!]!) {\n  restaurant(publicId: $publicId) {\n    menu {\n      categoriesSnapshot(uuids: $categoriesSnapshotUuids) {\n        uuid\n        _id: uuid\n        name\n        description\n        menuItemSnapshot {\n          ...restaurantMenuItemBasicFields\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment restaurantMenuItemBasicFields on OnlineRestaurantMenuItemSnapshotOutput {\n  _id: uuid\n  uuid\n  ichefUuid\n  name\n  price\n  pictureFilename\n  menuItemType\n  description\n  isSoldOut\n  __typename\n}\n"})
     return response.json()
+
+def fetch_menu_hours():
+    url = 'https://shop.ichefpos.com/api/graphql/online_restaurant?op=menuHoursSnapshotQuery'
+    response = requests.post(url, 
+        headers={"Content-Type": "application/json", "cache-control": "no-cache"}, 
+        json={
+            "operationName": "menuHoursSnapshotQuery",
+            "variables": {
+                "publicId": "WqxdHUPa",
+                "platformType": "ICHEF"
+            },
+            "query": "query menuHoursSnapshotQuery($publicId: String!, $platformType: PlatformTypes!) {\n  restaurant(publicId: $publicId) {\n    onlineOrderingMenu(platformType: $platformType) {\n      menuHoursSnapshot {\n        uuid\n        name\n        startTime\n        weekdays\n        startDate\n        endTime\n        endDate\n        categorySnapshotUuids\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}\n"
+        })
+    return response.json()
+
+def parse_hour_uuids(hours):
+    return hours['data']['restaurant']['onlineOrderingMenu']['menuHoursSnapshot'][0]['categorySnapshotUuids']
 
 def parse_items(items):
     try:
@@ -80,7 +97,8 @@ def parse_items(items):
     return []
 
 def start(bot):
-    items = fetch_items()
+    hours = fetch_menu_hours()
+    items = fetch_items(parse_hour_uuids(hours))
     fairies = parse_items(items)
     global date
 
