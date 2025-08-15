@@ -89,6 +89,7 @@ class IChefAPI:
 
     @classmethod
     def fetch_menu_hours(cls) -> List[str]:
+        uuids = []
         query = """query menuHoursSnapshotQuery($publicId: String!, $platformType: PlatformTypes!) {
   restaurant(publicId: $publicId) {
     onlineOrderingMenu(platformType: $platformType) {
@@ -105,9 +106,11 @@ class IChefAPI:
             snapshots = result["data"]["restaurant"]["onlineOrderingMenu"][
                 "menuHoursSnapshot"
             ]
-            return snapshots[0]["categorySnapshotUuids"] if snapshots else []
+            for snapshot in snapshots:
+                uuids.extend(snapshot["categorySnapshotUuids"])
+            return uuids
         except (KeyError, IndexError):
-            return []
+            return uuids
 
     @classmethod
     def fetch_menu_items(cls, uuids: List[str]) -> Dict[str, Any]:
