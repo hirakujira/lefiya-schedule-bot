@@ -154,7 +154,7 @@ class ScheduleBot:
             for category in categories:
                 name = category["name"]
                 if not date and len(name) >= 8:
-                    date = name[:8]
+                    date = name.strip()[:8]
 
                 schedule = Schedule.from_name(name)
                 for item in category.get("menuItemSnapshot", []):
