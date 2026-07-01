@@ -132,6 +132,8 @@ class IChefAPI:
 
 
 class ScheduleBot:
+    OPENING_HOURS = "\n今日營運時間：\n☀️：14:00 ~ 18:00\n🌍：14:00 ~ 22:00\n🌙：18:00 ~ 22:00\n"
+
     def __init__(self, config: BotConfig):
         self.bot = TelegramBot(config)
         self.api = IChefAPI()
@@ -172,16 +174,9 @@ class ScheduleBot:
         for fairy in fairies:
             message += f"{fairy.name} {fairy.schedule.emoji}\n"
 
-        message += self._get_opening_hours()
+        message += self.OPENING_HOURS
         message += "實際班表以現場為準\n\n線上點拍連結：\nhttps://order.lefiya.com"
         return message
-
-    def _get_opening_hours(self) -> str:
-        is_weekend = datetime.now().weekday() >= 5
-        if is_weekend:
-            return "\n今日營運時間：\n☀️：12:00 ~ 17:00\n🌍：12:00 ~ 22:00\n🌙：17:00 ~ 22:00\n"
-        else:
-            return "\n今日營運時間：\n☀️：14:00 ~ 18:00\n🌍：14:00 ~ 22:00\n🌙：18:00 ~ 22:00\n"
 
     def should_send(self) -> bool:
         return self._is_new_day() and self._is_send_time()
@@ -202,12 +197,8 @@ class ScheduleBot:
     def _is_send_time(self) -> bool:
         now = datetime.now()
         hour, minute = now.hour, now.minute
-        is_weekend = now.weekday() >= 5
 
-        if is_weekend:
-            in_time = (hour == 11 and minute > 40) or (hour == 12 and minute < 59)
-        else:
-            in_time = (hour == 13 and minute > 40) or (hour == 14 and minute < 59)
+        in_time = (hour == 13 and minute > 40) or (hour == 14 and minute < 59)
 
         if not in_time:
             print(f"Not in send time: {hour:02d}:{minute:02d}")
